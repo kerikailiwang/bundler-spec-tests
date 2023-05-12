@@ -6,17 +6,21 @@ import "@account-abstraction/contracts/interfaces/IEntryPoint.sol";
 import "./OpcodeRules.sol";
 import "./SimpleWallet.sol";
 
-contract TestRulesPaymaster is IPaymaster {
+contract PostOpPaymaster is IPaymaster {
     using OpcodeRules for string;
 
     TestCoin immutable coin = new TestCoin();
     uint something;
+
+    event BadState();
+    event FirstState();
 
     constructor(address _ep) payable {
         if (_ep != address(0)) {
             (bool req, ) = address(_ep).call{value: msg.value}("");
             require(req);
         }
+        something = 0;
     }
 
     function addStake(IEntryPoint ep, uint32 delay) public payable {
@@ -71,12 +75,15 @@ contract TestRulesPaymaster is IPaymaster {
             OpcodeRules.runRule(rule, coin) != OpcodeRules.UNKNOWN,
             string.concat("unknown rule: ", rule)
         );
-        return ("", 0);
+        return (abi.encode(userOp.sender), 0);
     }
 
     function postOp(
         PostOpMode mode,
         bytes calldata context,
         uint256 actualGasCost
-    ) external {}
+    ) external {
+        SimpleWallet sender = SimpleWallet(abi.decode(context, (address)));
+        require(sender.state() == 0);
+    }
 }

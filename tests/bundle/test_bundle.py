@@ -8,22 +8,31 @@ from tests.utils import (
     deploy_wallet_contract,
     deploy_and_deposit,
     send_bundle_now,
+    deploy_coin_contract,
     userop_hash,
+    deploy_paymaster_contract,
+    deploy_wallet_coin_contract
 )
+
+# pytest.skip(allow_module_level=True)
 
 ALLOWED_OPS_PER_UNSTAKED_SENDER = 4
 DEFAULT_MAX_PRIORITY_FEE_PER_GAS = 10**9
 DEFAULT_MAX_FEE_PER_GAS = 5*10**9
 MIN_PRICE_BUMP = 10
 
+
 def bump_fee_by(fee, factor):
     return round((fee*(100+factor)/100))
+
 
 def assert_ok(response):
     assert response.result
 
+
 def assert_error(response):
     assert_rpc_error(response, response.message, RPCErrorCode.INVALID_FIELDS)
+
 
 ReplaceOpTestCase = collections.namedtuple(
     "ReplaceOpTestCase", ["rule", "bump_priority", "bump_max", "assert_func"]
@@ -52,6 +61,7 @@ replace_op_cases = [
     )
 ]
 
+
 @pytest.mark.usefixtures("clear_state")
 @pytest.mark.parametrize("case", replace_op_cases, ids=lambda case: case.rule)
 def test_bundle_replace_op(w3, case):
@@ -65,7 +75,8 @@ def test_bundle_replace_op(w3, case):
         maxFeePerGas=hex(DEFAULT_MAX_FEE_PER_GAS),
     )
 
-    new_priority_fee_per_gas = bump_fee_by(DEFAULT_MAX_PRIORITY_FEE_PER_GAS, case.bump_priority)
+    new_priority_fee_per_gas = bump_fee_by(
+        DEFAULT_MAX_PRIORITY_FEE_PER_GAS, case.bump_priority)
     new_max_fee_per_gas = bump_fee_by(DEFAULT_MAX_FEE_PER_GAS, case.bump_max)
     replacement_calldata = wallet.encodeABI(fn_name="setState", args=[2])
     replacement_op = UserOperation(
@@ -80,7 +91,9 @@ def test_bundle_replace_op(w3, case):
     assert dump_mempool() == [new_op]
 
     case.assert_func(replacement_op.send())
-    assert dump_mempool() == [replacement_op if case.assert_func.__name__ == assert_ok.__name__ else new_op]
+    assert dump_mempool() == [
+        replacement_op if case.assert_func.__name__ == assert_ok.__name__ else new_op]
+
 
 @pytest.mark.parametrize("mode", ["manual"], ids=[""])
 @pytest.mark.usefixtures("clear_state", "set_bundling_mode")
@@ -88,7 +101,8 @@ def test_max_allowed_ops_unstaked_sender(w3, helper_contract):
     wallet = deploy_wallet_contract(w3)
     calldata = wallet.encodeABI(fn_name="setState", args=[1])
     wallet_ops = [
-        UserOperation(sender=wallet.address, nonce=hex(i << 64), callData=calldata)
+        UserOperation(sender=wallet.address, nonce=hex(
+            i << 64), callData=calldata)
         for i in range(ALLOWED_OPS_PER_UNSTAKED_SENDER + 1)
     ]
     for i, userop in enumerate(wallet_ops):
@@ -115,7 +129,8 @@ def test_max_allowed_ops_staked_sender(w3, entrypoint_contract, helper_contract)
     wallet = deploy_and_deposit(w3, entrypoint_contract, "SimpleWallet", True)
     calldata = wallet.encodeABI(fn_name="setState", args=[1])
     wallet_ops = [
-        UserOperation(sender=wallet.address, nonce=hex((i+1) << 64), callData=calldata)
+        UserOperation(sender=wallet.address, nonce=hex(
+            (i+1) << 64), callData=calldata)
         for i in range(ALLOWED_OPS_PER_UNSTAKED_SENDER + 1)
     ]
     for i, userop in enumerate(wallet_ops):
@@ -131,3 +146,91 @@ def test_max_allowed_ops_staked_sender(w3, entrypoint_contract, helper_contract)
         params=[ophash],
     ).send()
     assert response.result["userOpHash"] == ophash
+
+
+# ONLY UNCOMMENT IF BUNDLER HAS BEEN CONFIGURED TO ALLOW MULTIPLE USEROPS FROM SAME STAKED SENDER
+
+# @pytest.mark.parametrize("mode", ["manual"], ids=[""])
+# @pytest.mark.usefixtures("clear_state", "set_bundling_mode")
+# def test_first_invalidates_second_staked_sender(w3, entrypoint_contract, helper_contract):
+#     wallet = deploy_and_deposit(w3, entrypoint_contract, "SimpleWallet", True)
+#     calldata = wallet.encodeABI(fn_name="setState", args=[15])
+#     wallet_ops = [
+#         UserOperation(sender=wallet.address, nonce=hex(
+#             1 << 64), callData=calldata),
+#         UserOperation(sender=wallet.address, nonce=hex(
+#             2 << 64), callData=calldata)
+#     ]
+#     for i, userop in enumerate(wallet_ops):
+#         userop.send()
+#     assert dump_mempool() == wallet_ops
+#     send_bundle_now()
+#     mempool = dump_mempool()
+#     assert len(mempool) == 2
+#     ophash = userop_hash(helper_contract, wallet_ops[0])
+#     response = RPCRequest(
+#         method="eth_getUserOperationReceipt",
+#         params=[ophash],
+#     ).send()
+#     ophash1 = userop_hash(helper_contract, wallet_ops[1])
+#     response1 = RPCRequest(
+#         method="eth_getUserOperationReceipt",
+#         params=[ophash1],
+#     ).send()
+#     assert response.result == None
+#     assert response1.result == None
+
+
+@ pytest.mark.parametrize("mode", ["manual"], ids=[""])
+@ pytest.mark.usefixtures("clear_state", "set_bundling_mode")
+def test_double_userop_unstaked_senders(w3, helper_contract):
+    coin = deploy_coin_contract(w3)
+    wallet = deploy_wallet_coin_contract(w3, coin.address)
+    wallet2 = deploy_wallet_coin_contract(w3, coin.address)
+    assert wallet.functions.coin().call() == coin.address
+
+    calldata = wallet.encodeABI(fn_name="setCoinState", args=[1])
+    calldata2 = wallet.encodeABI(fn_name="setCoinState", args=[2])
+    wallet_ops = [
+        UserOperation(sender=wallet.address, nonce=hex(
+            1 << 64), callData=calldata),
+        UserOperation(sender=wallet2.address, nonce=hex(
+            2 << 64), callData=calldata2)
+    ]
+    for i, userop in enumerate(wallet_ops):
+        userop.send()
+
+        assert dump_mempool() == wallet_ops[: i + 1]
+
+    pausedState = coin.functions.paused().call()
+    assert pausedState == 0  # hasn't simulated the transaction execution
+    send_bundle_now()  # executes bundle.
+    pausedState = coin.functions.paused().call()
+    assert pausedState == 2
+    mempool = dump_mempool()
+    assert mempool == wallet_ops[1: -1]
+    ophash = userop_hash(helper_contract, wallet_ops[0])
+    response = RPCRequest(
+        method="eth_getUserOperationReceipt",
+        params=[ophash],
+    ).send()
+
+    assert response.result["userOpHash"] == ophash
+
+
+@ pytest.mark.parametrize("mode", ["manual"], ids=[""])
+@ pytest.mark.usefixtures("clear_state", "set_bundling_mode")
+def test_cheat_paymaster_during_postop(w3, entrypoint_contract, helper_contract):
+    wallet = deploy_wallet_contract(w3)
+    paymaster = deploy_and_deposit(
+        w3, entrypoint_contract, "PostOpPaymaster", True)
+    calldata = wallet.encodeABI(fn_name="setState", args=[1])
+    wallet_ops = [
+        UserOperation(sender=wallet.address, nonce=hex(
+            1 << 64), callData=calldata, paymasterAndData=paymaster.address),
+    ]
+    for i, userop in enumerate(wallet_ops):
+        userop.send()
+    send_bundle_now()  # executes bundle.
+    mempool = dump_mempool()
+    assert mempool == wallet_ops  # didn't make it on-chain

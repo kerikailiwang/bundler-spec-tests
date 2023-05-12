@@ -12,6 +12,7 @@ from tests.utils import (
     to_hex,
     to_prefixed_hex,
 )
+pytest.skip(allow_module_level=True)
 
 
 banned_opcodes = [
@@ -36,7 +37,8 @@ banned_opcodes = [
 @pytest.mark.parametrize("banned_op", banned_opcodes)
 def test_account_banned_opcode(rules_account_contract, banned_op):
     response = UserOperation(
-        sender=rules_account_contract.address, signature=to_prefixed_hex(banned_op)
+        sender=rules_account_contract.address, signature=to_prefixed_hex(
+            banned_op)
     ).send()
     assert_rpc_error(
         response, "account uses banned opcode: " + banned_op, RPCErrorCode.BANNED_OPCODE

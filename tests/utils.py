@@ -42,6 +42,7 @@ def deploy_contract(w3, contractname, ctrparams=None, value=0, gas=4 * 10**6):
 
 
 def deploy_and_deposit(w3, entrypoint_contract, contractname, staked):
+
     contract = deploy_contract(
         w3,
         contractname,
@@ -71,6 +72,22 @@ def deploy_wallet_contract(w3):
     return deploy_contract(
         w3, "SimpleWallet", ctrparams=[CommandLineArgs.entrypoint], value=2 * 10**18
     )
+
+
+def deploy_wallet_coin_contract(w3, coin):
+    return deploy_contract(
+        w3, "SimpleWalletCoin", ctrparams=[CommandLineArgs.entrypoint, coin], value=2 * 10**18
+    )
+
+
+def deploy_coin_contract(w3):
+    return deploy_contract(
+        w3, "TestCoin"
+    )
+
+
+def deploy_paymaster_contract(w3):
+    return deploy_contract(w3, "PostOpPaymaster", ctrparams=[CommandLineArgs.entrypoint])
 
 
 def userop_hash(helper_contract, userop):

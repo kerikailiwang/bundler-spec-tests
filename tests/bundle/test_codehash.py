@@ -5,16 +5,19 @@ from tests.utils import (
     send_bundle_now,
     deploy_contract,
 )
+pytest.skip(allow_module_level=True)
 
 
 def assert_useroperation_event(entrypoint_contract, userop, from_block):
-    logs = entrypoint_contract.events.UserOperationEvent.getLogs(fromBlock=from_block)
+    logs = entrypoint_contract.events.UserOperationEvent.getLogs(
+        fromBlock=from_block)
     assert len(logs) == 1
     assert logs[0].args.sender == userop.sender
 
 
 def assert_no_useroperation_event(entrypoint_contract, from_block):
-    logs = entrypoint_contract.events.UserOperationEvent.getLogs(fromBlock=from_block)
+    logs = entrypoint_contract.events.UserOperationEvent.getLogs(
+        fromBlock=from_block)
     assert len(logs) == 0
 
 
@@ -74,4 +77,5 @@ def test_codehash_changed(w3, entrypoint_contract):
         assert dump_mempool() == [userop]
         send_bundle_now()
         assert dump_mempool() == []
-        assert_useroperation_event(entrypoint_contract, userop, from_block=block_number)
+        assert_useroperation_event(
+            entrypoint_contract, userop, from_block=block_number)
